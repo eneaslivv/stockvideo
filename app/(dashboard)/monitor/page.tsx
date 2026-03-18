@@ -97,35 +97,51 @@ export default function MonitorPage() {
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
         });
       } catch {
-        // Fallback: try any available camera
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
       }
 
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        // Wait for video to actually start playing
-        await new Promise<void>((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => {
-              videoRef.current?.play();
+
+      if (!videoRef.current) return false;
+      const video = videoRef.current;
+      video.srcObject = stream;
+
+      // Wait for video to be fully playing with valid dimensions
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Camera timeout')), 10000);
+
+        const onPlaying = () => {
+          clearTimeout(timeout);
+          video.removeEventListener('playing', onPlaying);
+          // Extra safety: wait one more frame for dimensions to be available
+          requestAnimationFrame(() => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
               resolve();
-            };
-          }
-        });
-      }
+            } else {
+              // Wait a bit more for dimensions
+              setTimeout(() => resolve(), 500);
+            }
+          });
+        };
+
+        video.addEventListener('playing', onPlaying);
+        video.play().catch(reject);
+      });
+
       setCameraReady(true);
       cameraReadyRef.current = true;
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
-      if (msg.includes('NotAllowed') || msg.includes('Permission')) {
+      if (msg.includes('NotAllowed') || msg.includes('Permission') || msg.includes('denied')) {
         setCameraError('Permiso de cámara denegado. Habilita el acceso a la cámara en la configuración de tu navegador.');
       } else if (msg.includes('NotFound') || msg.includes('DevicesNotFound')) {
         setCameraError('No se encontró ninguna cámara. Conecta una cámara o usa un dispositivo con cámara.');
+      } else if (msg.includes('timeout')) {
+        setCameraError('La cámara tardó demasiado en inicializar. Intenta de nuevo.');
       } else {
         setCameraError(`No se pudo acceder a la cámara: ${msg}`);
       }
@@ -146,14 +162,19 @@ export default function MonitorPage() {
 
   const captureFrame = useCallback((): string | null => {
     if (!videoRef.current || !cameraReadyRef.current) return null;
-    if (videoRef.current.videoWidth === 0) return null;
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
+
+    // Scale down to max 640px wide to keep base64 small (~50-100KB)
+    const maxWidth = 640;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    ctx.drawImage(videoRef.current, 0, 0);
-    return canvas.toDataURL('image/jpeg', 0.8);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.5);
   }, []);
 
   const analyzeFrame = useCallback(async () => {
@@ -254,21 +275,28 @@ export default function MonitorPage() {
 
   const startMonitoring = useCallback(async () => {
     const cameraOk = await startCamera();
-    if (!cameraOk) return; // Don't start monitoring without camera
+    if (!cameraOk) return;
 
     setIsMonitoring(true);
     setIsPaused(false);
     setMovements([]);
     setScanCount(0);
     setElapsedTime(0);
-    setNextScanIn(3);
+    setNextScanIn(intervalSeconds);
     setLastError(null);
     previousSnapshotRef.current = null;
     setCurrentSnapshot(null);
 
-    // Delay first analysis to let camera stabilize
-    setTimeout(() => analyzeFrame(), 3000);
-  }, [startCamera, analyzeFrame]);
+    // Wait for a valid frame before first analysis
+    const waitForFrame = () => {
+      if (videoRef.current && videoRef.current.videoWidth > 0) {
+        analyzeFrame();
+      } else {
+        setTimeout(waitForFrame, 500);
+      }
+    };
+    setTimeout(waitForFrame, 1000);
+  }, [startCamera, analyzeFrame, intervalSeconds]);
 
   // Elapsed time counter
   useEffect(() => {
