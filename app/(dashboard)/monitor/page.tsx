@@ -19,6 +19,7 @@ import {
   Cpu,
   Wifi,
   Box,
+  ShieldAlert,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { createClient } from '@/lib/supabase/client';
@@ -49,75 +50,12 @@ interface Movement {
   timestamp: string;
 }
 
-// Demo simulation: generates fake detected products with bounding boxes
-function generateDemoSnapshot(products: StockSummary[], scanNum: number): Snapshot {
-  const numDetected = 3 + Math.floor(Math.random() * 4);
-  const shuffled = [...products].sort(() => Math.random() - 0.5).slice(0, numDetected);
-
-  const detected: DetectedProduct[] = shuffled.map((p, i) => ({
-    product_id: p.product_id,
-    product_name: p.name,
-    detected_count: Math.max(1, p.current_stock + Math.floor(Math.random() * 3) - 1),
-    confidence: 0.75 + Math.random() * 0.24,
-    is_known: true,
-    bbox: {
-      x: 5 + (i % 3) * 30 + Math.random() * 5,
-      y: 10 + Math.floor(i / 3) * 35 + Math.random() * 5,
-      w: 18 + Math.random() * 10,
-      h: 20 + Math.random() * 10,
-    },
-  }));
-
-  // Occasionally add unknown product
-  if (scanNum > 2 && Math.random() > 0.6) {
-    detected.push({
-      product_id: null,
-      product_name: 'Producto Desconocido',
-      detected_count: Math.floor(Math.random() * 5) + 1,
-      confidence: 0.45 + Math.random() * 0.3,
-      is_known: false,
-      bbox: {
-        x: 60 + Math.random() * 20,
-        y: 50 + Math.random() * 20,
-        w: 15 + Math.random() * 8,
-        h: 18 + Math.random() * 8,
-      },
-    });
-  }
-
-  return {
-    products: detected,
-    total_items: detected.reduce((sum, d) => sum + d.detected_count, 0),
-  };
-}
-
-function generateDemoMovements(prev: Snapshot | null, curr: Snapshot): Movement[] {
-  if (!prev) return [];
-  const movements: Movement[] = [];
-
-  for (const cp of curr.products) {
-    const pp = prev.products.find(p => p.product_name === cp.product_name);
-    if (pp && pp.detected_count !== cp.detected_count) {
-      const diff = cp.detected_count - pp.detected_count;
-      movements.push({
-        product_name: cp.product_name,
-        previous_count: pp.detected_count,
-        current_count: cp.detected_count,
-        difference: diff,
-        movement_type: diff > 0 ? 'entry' : 'exit',
-        confidence: 0.8 + Math.random() * 0.19,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-  return movements;
-}
-
 export default function MonitorPage() {
   const [products, setProducts] = useState<StockSummary[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [hasCamera, setHasCamera] = useState(true);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [currentSnapshot, setCurrentSnapshot] = useState<Snapshot | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,6 +63,7 @@ export default function MonitorPage() {
   const [intervalSeconds, setIntervalSeconds] = useState(10);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [nextScanIn, setNextScanIn] = useState(0);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -132,8 +71,9 @@ export default function MonitorPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const previousSnapshotRef = useRef<Snapshot | null>(null);
+  const cameraReadyRef = useRef(false);
 
-  // Load products
+  // Load products - use mock for product list if no Supabase, but camera/AI always real
   useEffect(() => {
     if (DEMO_MODE) {
       setProducts(mockProducts);
@@ -150,18 +90,48 @@ export default function MonitorPage() {
     fetchProducts();
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (): Promise<boolean> => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
+      setCameraError(null);
+      // Try rear camera first, fallback to any camera
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      } catch {
+        // Fallback: try any available camera
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Wait for video to actually start playing
+        await new Promise<void>((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => {
+              videoRef.current?.play();
+              resolve();
+            };
+          }
+        });
       }
-      setHasCamera(true);
-    } catch {
-      setHasCamera(false);
+      setCameraReady(true);
+      cameraReadyRef.current = true;
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      if (msg.includes('NotAllowed') || msg.includes('Permission')) {
+        setCameraError('Permiso de cámara denegado. Habilita el acceso a la cámara en la configuración de tu navegador.');
+      } else if (msg.includes('NotFound') || msg.includes('DevicesNotFound')) {
+        setCameraError('No se encontró ninguna cámara. Conecta una cámara o usa un dispositivo con cámara.');
+      } else {
+        setCameraError(`No se pudo acceder a la cámara: ${msg}`);
+      }
+      setCameraReady(false);
+      cameraReadyRef.current = false;
+      return false;
     }
   }, []);
 
@@ -170,10 +140,13 @@ export default function MonitorPage() {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    setCameraReady(false);
+    cameraReadyRef.current = false;
   }, []);
 
   const captureFrame = useCallback((): string | null => {
-    if (!videoRef.current || !hasCamera) return null;
+    if (!videoRef.current || !cameraReadyRef.current) return null;
+    if (videoRef.current.videoWidth === 0) return null;
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
@@ -181,93 +154,119 @@ export default function MonitorPage() {
     if (!ctx) return null;
     ctx.drawImage(videoRef.current, 0, 0);
     return canvas.toDataURL('image/jpeg', 0.8);
-  }, [hasCamera]);
+  }, []);
 
   const analyzeFrame = useCallback(async () => {
-    if (isProcessing || isPaused) return;
+    if (isProcessing || isPaused || !cameraReadyRef.current) return;
+
+    const image = captureFrame();
+    if (!image) {
+      setLastError('No se pudo capturar frame de la cámara');
+      return;
+    }
+
     setIsProcessing(true);
+    setLastError(null);
 
     try {
-      let newSnapshot: Snapshot;
+      const productData = products.map(p => ({
+        id: p.product_id,
+        name: p.name,
+        category: p.category,
+        unit: p.unit,
+        visual_description: p.visual_description || null,
+        aliases: p.aliases || [],
+      }));
 
-      if (!hasCamera || DEMO_MODE) {
-        // Demo mode: simulate detection
-        await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
-        newSnapshot = generateDemoSnapshot(products, scanCount);
-      } else {
-        // Real mode: call API
-        const image = captureFrame();
-        if (!image) { setIsProcessing(false); return; }
+      const endpoint = previousSnapshotRef.current
+        ? '/api/video/monitor'
+        : '/api/video/identify';
 
-        const productData = products.map(p => ({
-          id: p.product_id,
-          name: p.name,
-          category: p.category,
-          unit: p.unit,
-          visual_description: p.visual_description || null,
-          aliases: p.aliases || [],
-        }));
+      const body = previousSnapshotRef.current
+        ? { image, previousSnapshot: previousSnapshotRef.current, products: productData }
+        : { image, products: productData };
 
-        const endpoint = previousSnapshotRef.current
-          ? '/api/video/monitor'
-          : '/api/video/identify';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-        const body = previousSnapshotRef.current
-          ? { image, previousSnapshot: previousSnapshotRef.current, products: productData }
-          : { image, products: productData };
-
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) throw new Error('Analysis failed');
-        const result = await res.json();
-
-        newSnapshot = previousSnapshotRef.current
-          ? result.current_snapshot
-          : { products: result.products, total_items: result.total_items };
-
-        // Process API movements
-        if (result.movements_detected?.length > 0) {
-          const newMovements: Movement[] = result.movements_detected.map(
-            (m: Movement) => ({ ...m, timestamp: new Date().toISOString() })
-          );
-          setMovements(prev => [...newMovements, ...prev].slice(0, 50));
-        }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `API error: ${res.status}`);
       }
 
-      // Demo movements
-      if (!hasCamera || DEMO_MODE) {
-        const demoMovements = generateDemoMovements(previousSnapshotRef.current, newSnapshot);
-        if (demoMovements.length > 0) {
-          setMovements(prev => [...demoMovements, ...prev].slice(0, 50));
-        }
+      const result = await res.json();
+
+      // Parse snapshot from response
+      let newSnapshot: Snapshot;
+      if (previousSnapshotRef.current && result.current_snapshot) {
+        newSnapshot = result.current_snapshot;
+      } else {
+        newSnapshot = {
+          products: (result.products || []).map((p: DetectedProduct, i: number) => ({
+            ...p,
+            bbox: p.bbox || {
+              x: 5 + (i % 4) * 24 + Math.random() * 3,
+              y: 8 + Math.floor(i / 4) * 30 + Math.random() * 3,
+              w: 16 + Math.random() * 6,
+              h: 20 + Math.random() * 8,
+            },
+          })),
+          total_items: result.total_items || 0,
+        };
+      }
+
+      // Add bboxes to products from monitor endpoint too
+      if (previousSnapshotRef.current && result.current_snapshot) {
+        newSnapshot.products = newSnapshot.products.map((p: DetectedProduct, i: number) => ({
+          ...p,
+          bbox: p.bbox || {
+            x: 5 + (i % 4) * 24 + Math.random() * 3,
+            y: 8 + Math.floor(i / 4) * 30 + Math.random() * 3,
+            w: 16 + Math.random() * 6,
+            h: 20 + Math.random() * 8,
+          },
+        }));
       }
 
       setCurrentSnapshot(newSnapshot);
       previousSnapshotRef.current = newSnapshot;
       setScanCount(prev => prev + 1);
       setNextScanIn(intervalSeconds);
+
+      // Process movements from API
+      if (result.movements_detected?.length > 0) {
+        const newMovements: Movement[] = result.movements_detected.map(
+          (m: Movement) => ({ ...m, timestamp: new Date().toISOString() })
+        );
+        setMovements(prev => [...newMovements, ...prev].slice(0, 50));
+      }
     } catch (err) {
-      console.error('Monitor analysis error:', err);
+      const msg = err instanceof Error ? err.message : 'Error al analizar';
+      console.error('Monitor analysis error:', msg);
+      setLastError(msg);
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, isPaused, captureFrame, products, hasCamera, scanCount, intervalSeconds]);
+  }, [isProcessing, isPaused, captureFrame, products, intervalSeconds]);
 
   const startMonitoring = useCallback(async () => {
-    await startCamera();
+    const cameraOk = await startCamera();
+    if (!cameraOk) return; // Don't start monitoring without camera
+
     setIsMonitoring(true);
     setIsPaused(false);
     setMovements([]);
     setScanCount(0);
     setElapsedTime(0);
     setNextScanIn(3);
+    setLastError(null);
     previousSnapshotRef.current = null;
     setCurrentSnapshot(null);
 
+    // Delay first analysis to let camera stabilize
     setTimeout(() => analyzeFrame(), 3000);
   }, [startCamera, analyzeFrame]);
 
@@ -348,6 +347,9 @@ export default function MonitorPage() {
               Apunta la cámara a tu estantería. La IA identificará todos los productos,
               contará unidades y detectará cuando se muevan.
             </p>
+            <p className="text-xs text-text-tertiary mt-2">
+              Requiere acceso a la cámara y conexión con la API de OpenAI
+            </p>
           </div>
 
           <div>
@@ -382,11 +384,21 @@ export default function MonitorPage() {
             </div>
           </div>
 
+          {cameraError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-red-400 font-medium">Error de cámara</p>
+                <p className="text-xs text-red-400/70 mt-1">{cameraError}</p>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={startMonitoring}
             className="btn-accent w-full text-sm flex items-center justify-center gap-2"
           >
-            <Video className="w-4 h-4" /> Iniciar Monitor
+            <Camera className="w-4 h-4" /> Iniciar Monitor con Cámara Real
           </button>
         </motion.div>
       ) : (
@@ -394,38 +406,21 @@ export default function MonitorPage() {
         <div className="space-y-4">
           {/* Main video feed with HUD */}
           <div className="relative rounded-2xl overflow-hidden bg-[#0a0a0a] border border-border-subtle" style={{ aspectRatio: '16/9' }}>
-            {/* Video or demo background */}
-            {hasCamera && !DEMO_MODE ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              /* Demo mode: animated grid background */
-              <div className="w-full h-full relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#0a0f1a] via-[#0d1117] to-[#0a0a0a]" />
-                {/* Grid pattern */}
-                <div
-                  className="absolute inset-0 opacity-[0.07]"
-                  style={{
-                    backgroundImage: 'linear-gradient(rgba(0,200,150,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(0,200,150,0.5) 1px, transparent 1px)',
-                    backgroundSize: '40px 40px',
-                  }}
-                />
-                {/* Animated gradient spots */}
-                <div className="absolute top-1/4 left-1/4 w-64 h-64 rounded-full bg-accent-primary/5 blur-3xl animate-pulse" />
-                <div className="absolute bottom-1/4 right-1/3 w-48 h-48 rounded-full bg-blue-500/5 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-              </div>
-            )}
+            {/* ALWAYS render video element for camera feed */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
 
             {/* ===== HUD OVERLAY ===== */}
 
             {/* Scan line animation */}
             {isProcessing && (
               <motion.div
+                key={`scan-${scanCount}`}
                 initial={{ top: 0 }}
                 animate={{ top: '100%' }}
                 transition={{ duration: 1.5, ease: 'linear' }}
@@ -439,13 +434,9 @@ export default function MonitorPage() {
 
             {/* Corner brackets */}
             <div className="absolute inset-4 pointer-events-none z-10">
-              {/* TL */}
               <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-accent-primary/60 rounded-tl-lg" />
-              {/* TR */}
               <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-accent-primary/60 rounded-tr-lg" />
-              {/* BL */}
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-accent-primary/60 rounded-bl-lg" />
-              {/* BR */}
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-accent-primary/60 rounded-br-lg" />
             </div>
 
@@ -454,10 +445,10 @@ export default function MonitorPage() {
               <div className="flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
                 <div className={cn(
                   'w-2 h-2 rounded-full',
-                  isPaused ? 'bg-yellow-400' : 'bg-emerald-400 animate-pulse'
+                  isPaused ? 'bg-yellow-400' : isProcessing ? 'bg-blue-400 animate-pulse' : 'bg-emerald-400 animate-pulse'
                 )} />
                 <span className="text-[11px] font-mono text-white font-bold tracking-wider">
-                  {isPaused ? 'PAUSED' : isProcessing ? 'SCANNING' : 'LIVE'}
+                  {isPaused ? 'PAUSED' : isProcessing ? 'ANALYZING' : 'LIVE'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
@@ -496,20 +487,17 @@ export default function MonitorPage() {
                     height: `${product.bbox.h}%`,
                   }}
                 >
-                  {/* Box border */}
                   <div className={cn(
                     'absolute inset-0 rounded-md border-2',
                     product.is_known
                       ? 'border-accent-primary/80'
                       : 'border-yellow-400/80'
                   )} />
-                  {/* Corner dots */}
                   <div className={cn('absolute -top-1 -left-1 w-2 h-2 rounded-full', product.is_known ? 'bg-accent-primary' : 'bg-yellow-400')} />
                   <div className={cn('absolute -top-1 -right-1 w-2 h-2 rounded-full', product.is_known ? 'bg-accent-primary' : 'bg-yellow-400')} />
                   <div className={cn('absolute -bottom-1 -left-1 w-2 h-2 rounded-full', product.is_known ? 'bg-accent-primary' : 'bg-yellow-400')} />
                   <div className={cn('absolute -bottom-1 -right-1 w-2 h-2 rounded-full', product.is_known ? 'bg-accent-primary' : 'bg-yellow-400')} />
 
-                  {/* Label */}
                   <div className={cn(
                     'absolute -top-7 left-0 px-2 py-0.5 rounded text-[10px] font-mono font-bold whitespace-nowrap',
                     product.is_known
@@ -518,7 +506,6 @@ export default function MonitorPage() {
                   )}>
                     {product.product_name} × {product.detected_count}
                   </div>
-                  {/* Confidence */}
                   <div className="absolute -bottom-5 left-0 text-[9px] font-mono text-white/60">
                     {Math.round(product.confidence * 100)}% conf
                   </div>
@@ -529,6 +516,7 @@ export default function MonitorPage() {
             {/* Center crosshair (when processing) */}
             {isProcessing && (
               <motion.div
+                key={`cross-${scanCount}`}
                 initial={{ opacity: 0, rotate: 0 }}
                 animate={{ opacity: 0.4, rotate: 90 }}
                 transition={{ duration: 1.5 }}
@@ -605,6 +593,24 @@ export default function MonitorPage() {
               </div>
             )}
 
+            {/* Error toast on video */}
+            <AnimatePresence>
+              {lastError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute top-14 left-1/2 -translate-x-1/2 z-30"
+                >
+                  <div className="bg-red-500/90 backdrop-blur-md px-4 py-2 rounded-lg border border-red-400/30 flex items-center gap-2 max-w-sm">
+                    <AlertTriangle className="w-3.5 h-3.5 text-white flex-shrink-0" />
+                    <span className="text-[11px] text-white truncate">{lastError}</span>
+                    <button onClick={() => setLastError(null)} className="text-white/70 hover:text-white ml-2 text-xs">✕</button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Bottom center: Controls */}
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
               <button
@@ -633,7 +639,6 @@ export default function MonitorPage() {
                 <VideoOff className="w-3.5 h-3.5" /> Detener
               </button>
 
-              {/* Next scan countdown */}
               {!isPaused && !isProcessing && (
                 <div className="bg-black/70 backdrop-blur-md px-3 py-2 rounded-full border border-white/10">
                   <span className="text-[11px] font-mono text-white/50">
