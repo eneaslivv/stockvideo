@@ -66,6 +66,7 @@ export default function MonitorPage() {
   const [lastError, setLastError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const displayVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -104,6 +105,15 @@ export default function MonitorPage() {
       }
 
       streamRef.current = stream;
+
+      // Attach to hidden capture video
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      // Attach to visible display video (may not exist yet, will sync in useEffect)
+      if (displayVideoRef.current) {
+        displayVideoRef.current.srcObject = stream;
+      }
 
       if (!videoRef.current) return false;
       const video = videoRef.current;
@@ -274,10 +284,7 @@ export default function MonitorPage() {
   }, [isProcessing, isPaused, captureFrame, products, intervalSeconds]);
 
   const startMonitoring = useCallback(async () => {
-    const cameraOk = await startCamera();
-    if (!cameraOk) return;
-
-    setIsMonitoring(true);
+    // Reset state first
     setIsPaused(false);
     setMovements([]);
     setScanCount(0);
@@ -287,7 +294,14 @@ export default function MonitorPage() {
     previousSnapshotRef.current = null;
     setCurrentSnapshot(null);
 
-    // Wait for a valid frame before first analysis
+    // Start camera (hidden video ref is always in DOM)
+    const cameraOk = await startCamera();
+    if (!cameraOk) return;
+
+    // Now show monitoring view (this renders the display video)
+    setIsMonitoring(true);
+
+    // Wait for valid frame before first analysis
     const waitForFrame = () => {
       if (videoRef.current && videoRef.current.videoWidth > 0) {
         analyzeFrame();
@@ -295,8 +309,16 @@ export default function MonitorPage() {
         setTimeout(waitForFrame, 500);
       }
     };
-    setTimeout(waitForFrame, 1000);
+    setTimeout(waitForFrame, 1500);
   }, [startCamera, analyzeFrame, intervalSeconds]);
+
+  // Sync display video with stream when monitoring view renders
+  useEffect(() => {
+    if (isMonitoring && streamRef.current && displayVideoRef.current) {
+      displayVideoRef.current.srcObject = streamRef.current;
+      displayVideoRef.current.play().catch(() => {});
+    }
+  }, [isMonitoring]);
 
   // Elapsed time counter
   useEffect(() => {
@@ -350,6 +372,19 @@ export default function MonitorPage() {
 
   return (
     <div className="space-y-6">
+      {/* Hidden video element - always in DOM so ref is available for camera */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className={cn(
+          'fixed top-0 left-0 pointer-events-none',
+          isMonitoring ? 'hidden' : 'hidden'
+        )}
+        style={{ width: 1, height: 1, opacity: 0 }}
+      />
+
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <span className="section-label">05 · ライブ</span>
@@ -434,9 +469,9 @@ export default function MonitorPage() {
         <div className="space-y-4">
           {/* Main video feed with HUD */}
           <div className="relative rounded-2xl overflow-hidden bg-[#0a0a0a] border border-border-subtle" style={{ aspectRatio: '16/9' }}>
-            {/* ALWAYS render video element for camera feed */}
+            {/* Visible video display */}
             <video
-              ref={videoRef}
+              ref={displayVideoRef}
               autoPlay
               playsInline
               muted
