@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { ScanLine, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { createClient } from '@/lib/supabase/client';
+import { DEMO_MODE, mockProducts } from '@/lib/mock-data';
 import VideoCapture from '@/components/video/VideoCapture';
 import type { StockSummary } from '@/types';
 
@@ -13,10 +14,15 @@ export default function VerifyPage() {
   const [selectedProduct, setSelectedProduct] = useState<StockSummary | null>(null);
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      setProducts(mockProducts);
+      setLoading(false);
+      return;
+    }
     async function fetchProducts() {
+      const supabase = createClient();
       const { data } = await supabase
         .from('stock_summary')
         .select('*')
@@ -25,7 +31,7 @@ export default function VerifyPage() {
       setLoading(false);
     }
     fetchProducts();
-  }, [supabase]);
+  }, []);
 
   return (
     <div className="space-y-8">

@@ -2,14 +2,21 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { DEMO_MODE, mockProducts, mockMovements, mockStats } from '@/lib/mock-data';
 import type { StockSummary, StockMovement, DashboardStats } from '@/types';
 
 export function useStockSummary() {
   const [data, setData] = useState<StockSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   const fetchData = useCallback(async () => {
+    if (DEMO_MODE) {
+      setData(mockProducts);
+      setLoading(false);
+      return;
+    }
+
+    const supabase = createClient();
     const { data: summary } = await supabase
       .from('stock_summary')
       .select('*')
@@ -17,26 +24,25 @@ export function useStockSummary() {
 
     if (summary) setData(summary);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchData();
 
+    if (DEMO_MODE) return;
+
+    const supabase = createClient();
     const channel = supabase
       .channel('stock-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'stock_movements' },
-        () => {
-          fetchData();
-        }
+        () => { fetchData(); }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchData, supabase]);
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchData]);
 
   return { data, loading, refetch: fetchData };
 }
@@ -44,9 +50,15 @@ export function useStockSummary() {
 export function useRecentMovements(limit = 10) {
   const [data, setData] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   const fetchData = useCallback(async () => {
+    if (DEMO_MODE) {
+      setData(mockMovements.slice(0, limit));
+      setLoading(false);
+      return;
+    }
+
+    const supabase = createClient();
     const { data: movements } = await supabase
       .from('stock_movements')
       .select('*, product:products(name, category, unit, image_url)')
@@ -55,26 +67,25 @@ export function useRecentMovements(limit = 10) {
 
     if (movements) setData(movements as unknown as StockMovement[]);
     setLoading(false);
-  }, [supabase, limit]);
+  }, [limit]);
 
   useEffect(() => {
     fetchData();
 
+    if (DEMO_MODE) return;
+
+    const supabase = createClient();
     const channel = supabase
       .channel('movements-realtime')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'stock_movements' },
-        () => {
-          fetchData();
-        }
+        () => { fetchData(); }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchData, supabase]);
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchData]);
 
   return { data, loading, refetch: fetchData };
 }
@@ -88,10 +99,16 @@ export function useDashboardStats(): { stats: DashboardStats; loading: boolean }
     lowStockAlerts: 0,
   });
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      setStats(mockStats);
+      setLoading(false);
+      return;
+    }
+
     async function fetchStats() {
+      const supabase = createClient();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -105,8 +122,8 @@ export function useDashboardStats(): { stats: DashboardStats; loading: boolean }
       ]);
 
       const summary = summaryRes.data || [];
-      const totalStock = summary.reduce((acc, s) => acc + (s.current_stock || 0), 0);
-      const lowStock = summary.filter(s => s.is_low_stock).length;
+      const totalStock = summary.reduce((acc: number, s: StockSummary) => acc + (s.current_stock || 0), 0);
+      const lowStock = summary.filter((s: StockSummary) => s.is_low_stock).length;
 
       setStats({
         totalProducts: productsRes.count || 0,
@@ -119,7 +136,7 @@ export function useDashboardStats(): { stats: DashboardStats; loading: boolean }
     }
 
     fetchStats();
-  }, [supabase]);
+  }, []);
 
   return { stats, loading };
 }

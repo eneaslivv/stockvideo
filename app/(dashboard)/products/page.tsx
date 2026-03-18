@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { createClient } from '@/lib/supabase/client';
+import { DEMO_MODE, mockProducts } from '@/lib/mock-data';
 import type { Product, StockSummary } from '@/types';
 
 export default function ProductsPage() {
@@ -22,10 +23,14 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showNewModal, setShowNewModal] = useState(false);
-  const supabase = createClient();
-
   useEffect(() => {
+    if (DEMO_MODE) {
+      setProducts(mockProducts);
+      setLoading(false);
+      return;
+    }
     async function fetchProducts() {
+      const supabase = createClient();
       const { data } = await supabase
         .from('stock_summary')
         .select('*')
@@ -34,7 +39,7 @@ export default function ProductsPage() {
       setLoading(false);
     }
     fetchProducts();
-  }, [supabase]);
+  }, []);
 
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { createClient } from '@/lib/supabase/client';
+import { DEMO_MODE, mockMovements } from '@/lib/mock-data';
 import type { StockMovement } from '@/types';
 import {
   relativeTime,
@@ -44,10 +45,14 @@ export default function MovementsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const supabase = createClient();
-
   useEffect(() => {
+    if (DEMO_MODE) {
+      setMovements(mockMovements);
+      setLoading(false);
+      return;
+    }
     async function fetchMovements() {
+      const supabase = createClient();
       const { data } = await supabase
         .from('stock_movements')
         .select('*, product:products(name, category, unit, image_url)')
@@ -58,7 +63,7 @@ export default function MovementsPage() {
       setLoading(false);
     }
     fetchMovements();
-  }, [supabase]);
+  }, []);
 
   const filtered = movements.filter(m => {
     const matchesType = typeFilter === 'all' || m.type === typeFilter;
