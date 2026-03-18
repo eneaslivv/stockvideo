@@ -7,6 +7,12 @@ function getOpenAI() {
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'OpenAI API key no configurada. Agrega OPENAI_API_KEY en .env.local' },
+        { status: 500 }
+      );
+    }
     const openai = getOpenAI();
     const { image, previousSnapshot, products } = await req.json();
 
@@ -90,10 +96,12 @@ RESPONDE EN JSON:
     result.timestamp = new Date().toISOString();
 
     return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Video monitor error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const isAuthError = message.includes('401') || message.includes('API key') || message.includes('Unauthorized');
     return NextResponse.json(
-      { error: 'Failed to monitor scene' },
+      { error: isAuthError ? 'API key de OpenAI inválida o expirada' : `Error al monitorear: ${message}` },
       { status: 500 }
     );
   }
