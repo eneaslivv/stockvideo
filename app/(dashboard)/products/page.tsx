@@ -211,6 +211,7 @@ function ProductModal({ onClose }: { onClose: () => void }) {
   const [minStock, setMinStock] = useState(0);
   const [aliases, setAliases] = useState<string[]>([]);
   const [aliasInput, setAliasInput] = useState('');
+  const [visualDescription, setVisualDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const supabase = createClient();
 
@@ -235,6 +236,7 @@ function ProductModal({ onClose }: { onClose: () => void }) {
       unit,
       min_stock: minStock,
       aliases,
+      visual_description: visualDescription.trim() || null,
     });
 
     setSaving(false);
@@ -314,6 +316,23 @@ function ProductModal({ onClose }: { onClose: () => void }) {
                 min={0}
                 className="w-full px-4 py-2.5 rounded-lg bg-bg-elevated border border-border-subtle text-sm focus:outline-none focus:border-accent-primary transition-colors"
               />
+            </div>
+
+            {/* Visual Description */}
+            <div>
+              <label className="text-xs text-text-secondary mb-1.5 block">
+                Descripción Visual (para identificación por cámara)
+              </label>
+              <textarea
+                value={visualDescription}
+                onChange={e => setVisualDescription(e.target.value)}
+                placeholder="Ej: Botella roja con etiqueta negra, tapa dorada, 500ml. Logo de dragón en el centro."
+                rows={2}
+                className="w-full px-4 py-2.5 rounded-lg bg-bg-elevated border border-border-subtle text-sm focus:outline-none focus:border-accent-primary transition-colors resize-none"
+              />
+              <p className="text-[10px] text-text-tertiary mt-1">
+                Describe el aspecto del producto para que la IA lo reconozca automáticamente por cámara
+              </p>
             </div>
 
             {/* Aliases */}

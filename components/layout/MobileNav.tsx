@@ -8,6 +8,7 @@ import {
   Package,
   ArrowLeftRight,
   ScanLine,
+  Video,
   Settings,
   X,
   Zap,
@@ -19,7 +20,8 @@ const navItems = [
   { href: '/products', label: 'Productos', labelJp: '製品', icon: Package, num: '02' },
   { href: '/movements', label: 'Movimientos', labelJp: '履歴', icon: ArrowLeftRight, num: '03' },
   { href: '/verify', label: 'Verificación', labelJp: '検証', icon: ScanLine, num: '04' },
-  { href: '/settings', label: 'Configuración', labelJp: '設定', icon: Settings, num: '05' },
+  { href: '/monitor', label: 'Monitor en Vivo', labelJp: 'ライブ', icon: Video, num: '05' },
+  { href: '/settings', label: 'Configuración', labelJp: '設定', icon: Settings, num: '06' },
 ];
 
 interface MobileNavProps {

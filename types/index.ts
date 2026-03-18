@@ -12,6 +12,8 @@ export interface Product {
   aliases: string[];
   min_stock: number;
   barcode: string | null;
+  visual_description: string | null;
+  reference_image_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -53,6 +55,9 @@ export interface StockSummary {
   unit: string;
   min_stock: number;
   image_url: string | null;
+  aliases: string[];
+  visual_description: string | null;
+  reference_image_url: string | null;
   current_stock: number;
   last_movement: string | null;
   is_low_stock: boolean;
@@ -85,6 +90,33 @@ export interface BoundingBox {
   width: number;
   height: number;
   label: string;
+}
+
+export interface IdentifiedProduct {
+  product_id: string | null;
+  product_name: string;
+  detected_count: number;
+  confidence: number;
+  bounding_boxes: BoundingBox[];
+  is_known: boolean;
+}
+
+export interface SceneAnalysis {
+  products: IdentifiedProduct[];
+  total_items: number;
+  scene_description: string;
+  image_quality: 'good' | 'fair' | 'poor';
+  timestamp: string;
+}
+
+export interface MovementDetection {
+  product_id: string | null;
+  product_name: string;
+  previous_count: number;
+  current_count: number;
+  difference: number;
+  movement_type: MovementType;
+  confidence: number;
 }
 
 export interface QuickMovement {

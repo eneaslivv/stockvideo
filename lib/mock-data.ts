@@ -7,18 +7,18 @@ const now = new Date();
 const ago = (minutes: number) => new Date(now.getTime() - minutes * 60000).toISOString();
 
 export const mockProducts: StockSummary[] = [
-  { product_id: '1', name: 'Salsa Picante', category: 'Salsas', unit: 'botella', min_stock: 10, image_url: null, current_stock: 24, last_movement: ago(15), is_low_stock: false },
-  { product_id: '2', name: 'Vino Tinto Malbec', category: 'Bebidas', unit: 'botella', min_stock: 6, image_url: null, current_stock: 18, last_movement: ago(30), is_low_stock: false },
-  { product_id: '3', name: 'Cerveza Artesanal IPA', category: 'Bebidas', unit: 'botella', min_stock: 12, image_url: null, current_stock: 8, last_movement: ago(45), is_low_stock: true },
-  { product_id: '4', name: 'Aceite de Oliva Extra Virgen', category: 'Aceites', unit: 'botella', min_stock: 5, image_url: null, current_stock: 15, last_movement: ago(60), is_low_stock: false },
-  { product_id: '5', name: 'Pasta Fusilli', category: 'Pastas', unit: 'paquete', min_stock: 20, image_url: null, current_stock: 42, last_movement: ago(90), is_low_stock: false },
-  { product_id: '6', name: 'Queso Parmesano', category: 'Lácteos', unit: 'unidad', min_stock: 8, image_url: null, current_stock: 3, last_movement: ago(120), is_low_stock: true },
-  { product_id: '7', name: 'Harina 000', category: 'Secos', unit: 'kg', min_stock: 15, image_url: null, current_stock: 28, last_movement: ago(180), is_low_stock: false },
-  { product_id: '8', name: 'Tomates Perita', category: 'Verduras', unit: 'kg', min_stock: 10, image_url: null, current_stock: 0, last_movement: ago(200), is_low_stock: true },
-  { product_id: '9', name: 'Café Molido Premium', category: 'Bebidas', unit: 'paquete', min_stock: 5, image_url: null, current_stock: 12, last_movement: ago(240), is_low_stock: false },
-  { product_id: '10', name: 'Manteca', category: 'Lácteos', unit: 'unidad', min_stock: 4, image_url: null, current_stock: 7, last_movement: ago(300), is_low_stock: false },
-  { product_id: '11', name: 'Azúcar', category: 'Secos', unit: 'kg', min_stock: 10, image_url: null, current_stock: 5, last_movement: ago(350), is_low_stock: true },
-  { product_id: '12', name: 'Leche Entera', category: 'Lácteos', unit: 'litro', min_stock: 10, image_url: null, current_stock: 22, last_movement: ago(20), is_low_stock: false },
+  { product_id: '1', name: 'Salsa Picante', category: 'Salsas', unit: 'botella', min_stock: 10, image_url: null, aliases: ['picante', 'hot sauce'], visual_description: 'Botella roja con etiqueta negra y tapa dorada, 500ml', reference_image_url: null, current_stock: 24, last_movement: ago(15), is_low_stock: false },
+  { product_id: '2', name: 'Vino Tinto Malbec', category: 'Bebidas', unit: 'botella', min_stock: 6, image_url: null, aliases: ['malbec', 'vino tinto'], visual_description: 'Botella de vidrio oscuro con etiqueta blanca y letras doradas', reference_image_url: null, current_stock: 18, last_movement: ago(30), is_low_stock: false },
+  { product_id: '3', name: 'Cerveza Artesanal IPA', category: 'Bebidas', unit: 'botella', min_stock: 12, image_url: null, aliases: ['ipa', 'cerveza'], visual_description: 'Botella ámbar 330ml con etiqueta verde y logo de lúpulo', reference_image_url: null, current_stock: 8, last_movement: ago(45), is_low_stock: true },
+  { product_id: '4', name: 'Aceite de Oliva Extra Virgen', category: 'Aceites', unit: 'botella', min_stock: 5, image_url: null, aliases: ['aceite', 'oliva'], visual_description: 'Botella verde oscuro 750ml con etiqueta dorada', reference_image_url: null, current_stock: 15, last_movement: ago(60), is_low_stock: false },
+  { product_id: '5', name: 'Pasta Fusilli', category: 'Pastas', unit: 'paquete', min_stock: 20, image_url: null, aliases: ['fusilli', 'fideos'], visual_description: 'Paquete celeste 500g con ventana transparente mostrando pasta espiral', reference_image_url: null, current_stock: 42, last_movement: ago(90), is_low_stock: false },
+  { product_id: '6', name: 'Queso Parmesano', category: 'Lácteos', unit: 'unidad', min_stock: 8, image_url: null, aliases: ['parmesano', 'queso'], visual_description: 'Cuña de queso amarillo envuelto en papel encerado con sticker azul', reference_image_url: null, current_stock: 3, last_movement: ago(120), is_low_stock: true },
+  { product_id: '7', name: 'Harina 000', category: 'Secos', unit: 'kg', min_stock: 15, image_url: null, aliases: ['harina'], visual_description: 'Bolsa blanca de 1kg con letras rojas "000"', reference_image_url: null, current_stock: 28, last_movement: ago(180), is_low_stock: false },
+  { product_id: '8', name: 'Tomates Perita', category: 'Verduras', unit: 'kg', min_stock: 10, image_url: null, aliases: ['tomate', 'perita'], visual_description: 'Tomates rojos alargados en cajón de madera', reference_image_url: null, current_stock: 0, last_movement: ago(200), is_low_stock: true },
+  { product_id: '9', name: 'Café Molido Premium', category: 'Bebidas', unit: 'paquete', min_stock: 5, image_url: null, aliases: ['café', 'coffee'], visual_description: 'Paquete negro mate 250g con letras doradas "Premium"', reference_image_url: null, current_stock: 12, last_movement: ago(240), is_low_stock: false },
+  { product_id: '10', name: 'Manteca', category: 'Lácteos', unit: 'unidad', min_stock: 4, image_url: null, aliases: ['mantequilla'], visual_description: 'Pan de manteca envuelto en papel plateado 200g', reference_image_url: null, current_stock: 7, last_movement: ago(300), is_low_stock: false },
+  { product_id: '11', name: 'Azúcar', category: 'Secos', unit: 'kg', min_stock: 10, image_url: null, aliases: ['sugar'], visual_description: 'Bolsa transparente de 1kg con etiqueta azul', reference_image_url: null, current_stock: 5, last_movement: ago(350), is_low_stock: true },
+  { product_id: '12', name: 'Leche Entera', category: 'Lácteos', unit: 'litro', min_stock: 10, image_url: null, aliases: ['leche'], visual_description: 'Sachet blanco 1L con franja celeste y vaca dibujada', reference_image_url: null, current_stock: 22, last_movement: ago(20), is_low_stock: false },
 ];
 
 export const mockMovements: StockMovement[] = [
