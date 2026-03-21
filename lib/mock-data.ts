@@ -1,7 +1,20 @@
 import type { StockSummary, StockMovement, DashboardStats } from '@/types';
 
+function isInvalidSupabaseUrl(url: string | undefined): boolean {
+  if (!url) return true;
+  const invalid = ['placeholder', 'your_supabase', 'your-supabase', 'example', 'localhost'];
+  if (invalid.some(v => url.toLowerCase().includes(v))) return true;
+  // Must be a valid supabase URL pattern
+  try {
+    const parsed = new URL(url);
+    return !parsed.hostname.includes('supabase');
+  } catch {
+    return true;
+  }
+}
+
 export const DEMO_MODE = typeof window !== 'undefined' &&
-  (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder'));
+  isInvalidSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
 const now = new Date();
 const ago = (minutes: number) => new Date(now.getTime() - minutes * 60000).toISOString();

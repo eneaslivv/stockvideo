@@ -3,7 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   // Preview mode: skip auth when Supabase is not configured
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+  const isInvalid = !supabaseUrl ||
+    ['placeholder', 'your_supabase', 'your-supabase', 'example'].some(v => supabaseUrl.toLowerCase().includes(v)) ||
+    !supabaseUrl.includes('supabase');
+  if (isInvalid) {
     return NextResponse.next();
   }
 
